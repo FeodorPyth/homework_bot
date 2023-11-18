@@ -55,14 +55,14 @@ class WrongAPIResponseError(Exception):
 
 def check_tokens():
     """The function checks the availability of environment variables."""
-    if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+    env_variables = [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
+    if all(env_variables):
         return True
-    else:
-        return False
 
 
 def send_message(bot, message):
     """The function sends a message to Telegram chat."""
+    logger.info('Начало работы функции отправки сообщения в чат Telegram.')
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.debug(f'Сообщение было успешно отправлено: {message}')
@@ -74,6 +74,7 @@ def send_message(bot, message):
 
 def get_api_answer(timestamp):
     """The function makes a request to the API service endpoint."""
+    logger.info('Начало работы функции на получение ответа API.')
     try:
         response = requests.get(
             ENDPOINT,
@@ -81,35 +82,38 @@ def get_api_answer(timestamp):
             params={'from_date': timestamp}
         )
     except Exception as error:
-        logger.error(error)
+        logger.error(f'Эндпоинт недоступен: {ENDPOINT}. {error}')
     if response.status_code != 200:
-        raise WrongAPIResponseError('Ошибка соединения.')
+        error_message = (f'Ошибка соединения.'
+                         f'Код соединения {response.status_code}')
+        logger.error(error_message)
+        raise WrongAPIResponseError(error_message)
     return response.json()
 
 
 def check_response(response):
     """The function checks the API response for compliance."""
+    logger.info('Начало работы функции на проверку ответа API.')
     if not response:
-        error_message = 'Не был получен ответ от API.'
-        logger.critical(error_message)
-        raise ValueError(error_message)
+        raise ValueError('Не был получен ответ от API.')
     if type(response) is not dict:
-        error_message = 'Тип данных не соответствует ожидаемым.'
-        logger.error(error_message)
-        raise TypeError(error_message)
+        raise TypeError(
+            f'Тип данных {type(response)} не соответствует ожидаемому.'
+            f'Ожидался тип данных {dict}.'
+        )
     if not (response.get('current_date') and response.get('homeworks')):
-        error_message = 'Ошибка в данных!'
-        logger.error(error_message)
-        raise KeyError(error_message)
+        raise KeyError('Ответ API не вернул оба ключа:'
+                       '"homeworks" и "current_date".')
     if type(response.get('homeworks')) is not list:
-        error_message = 'Тип данных не соответствует ожидаемым.'
-        logger.error(error_message)
-        raise TypeError(error_message)
+        raise TypeError(f'Тип данных {type(response.get("homeworks"))}'
+                        f'не соответствует ожидаемому.'
+                        f'Ожидался тип данных {list}.')
     return response.get('homeworks')[0]
 
 
 def parse_status(homework):
     """The function retrieves information about the status of homework."""
+    logger.info('Начало работы функции на проверку статуса работы.')
     if (homework.get('status') not in HOMEWORK_VERDICTS
        or homework.get('status') is None):
         error_message = 'Передан неверный статус!'
@@ -144,10 +148,10 @@ def main():
             if message != last_message:
                 send_message(bot, message)
                 last_message = message
-            time.sleep(RETRY_PERIOD)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
+        finally:
             time.sleep(RETRY_PERIOD)
 
 
